@@ -34,8 +34,21 @@ if (isset($_POST['edit_post'])) {
     $text = trim($_POST['text'] ?? '');
     $selectedCategory = (int)($_POST['category_id'] ?? 0);
 
-    $existingImages = json_decode($post['image_path'], true) ?? [];
-    $imagePaths = $existingImages;
+    $existingImages = !empty($post['image_path'])
+        ? (json_decode($post['image_path'], true) ?? [$post['image_path']])
+        : [];
+
+    $keepImages = $_POST['keep_image'] ?? [];
+
+    foreach ($existingImages as $item) {
+        if (!in_array($item, $keepImages)) {
+            if (file_exists($item)) {
+                unlink($item);
+            }
+        }
+    }
+
+    $imagePaths = array_values($keepImages);
     $allowedExt = ['jpg', 'jpeg', 'png'];
     $maxSize = 5 * 1024 * 1024;
 
@@ -120,8 +133,48 @@ if (isset($_POST['edit_post'])) {
             margin-bottom: 16px;
             font-size: 14px;
         }
-        .current-image { margin-bottom: 10px; }
-        .current-image img { width: 100%; max-width: 300px; height: 180px; object-fit: cover; border-radius: 8px; border: 1px solid #0f3460; display: block; }
+        .image-preview-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 8px 0 12px;
+        }
+        .image-preview-item {
+            position: relative;
+            display: inline-block;
+        }
+        .image-preview-item img {
+            width: 140px;
+            height: 100px;
+            object-fit: cover;
+            border-radius: 8px;
+            border: 2px solid #0f3460;
+            display: block;
+            transition: opacity 0.2s, filter 0.2s;
+        }
+        .image-preview-item.removed img {
+            opacity: 0.25;
+            filter: grayscale(100%);
+        }
+        .remove-btn, .undo-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            width: 24px;
+            height: 24px;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+            transition: opacity 0.2s;
+        }
+        .remove-btn { background: #c0392b; color: #fff; }
+        .undo-btn   { background: #27ae60; color: #fff; }
+        .remove-btn:hover, .undo-btn:hover { opacity: 0.8; }
         .btn {
             display: inline-block;
             padding: 10px 20px;
@@ -136,6 +189,25 @@ if (isset($_POST['edit_post'])) {
         .btn:hover { opacity: 0.85; }
         .hint { font-size: 12px; color: #7f8c8d; margin-top: 4px; }
     </style>
+    <script>
+        function removeImage(index) {
+            document.getElementById('item-' + index).classList.add('removed')
+            document.getElementById('keep-' + index).disabled = true
+            var btn = document.getElementById('btn-' + index)
+            btn.textContent = '✓'
+            btn.className = 'undo-btn'
+            btn.setAttribute('onclick', 'undoRemove('+ index +')')
+        }
+
+        function undoRemove(index) {
+            document.getElementById('item-' + index).classList.remove('removed')
+            document.getElementById('keep-' + index).disabled = false
+            var btn = document.getElementById('btn-' + index)
+            btn.textContent = '✕'
+            btn.className = 'remove-btn'
+            btn.setAttribute('onclick', 'removeImage('+ index +')')
+        }
+    </script>
 </head>
 <body>
     <div class="page-center">
@@ -155,11 +227,15 @@ if (isset($_POST['edit_post'])) {
                 <div class="form-group">
                     <label>Replace image (jpg, jpeg, png — max 5MB)</label>
                     <?php if (!empty($post['image_path'])): ?>
-                        <?php $currentImages = !empty($post['image_path']) ? (json_decode($post['image_path'], true) [$post['image_path']]) : []; ?>
-                        <div class="current-image">
-                            <p class="hint">Current images:</p>
-                            <?php foreach ($currentImages as $item): ?>
-                                <img src="<?= htmlspecialchars($item) ?>" alt="current">
+                        <?php $currentImages = !empty($post['image_path']) ? (json_decode($post['image_path'], true) ?? [$post['image_path']]) : []; ?>
+                        <p class="hint" style="margin-bottom: 8px;">Current images — click ✕ to mark for deletion:</p>
+                        <div class="image-preview-grid">
+                            <?php foreach ($currentImages as $index => $item): ?>
+                                <div class="image-preview-item" id="item-<?= $index ?>">
+                                    <img src="<?= htmlspecialchars($item) ?>" alt="image">
+                                    <input type="hidden" name="keep_images[]" value="<?= htmlspecialchars($item) ?>" id="keep-<?= $index ?>">
+                                    <button type="button" class="remove-btn" id="btn-<?= $index ?>" onclick="removeImage(<?= $index ?>)">✕</button>
+                                </div>
                             <?php endforeach; ?>
                         </div>
                     <?php endif; ?>
